@@ -14,6 +14,8 @@ import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 mcp = FastMCP(
@@ -24,6 +26,20 @@ mcp = FastMCP(
         "get_devices to list available speakers, and set_device to switch zones."
     ),
 )
+
+# Middleware to strip invalid host header that Cloudflare/Render sends
+class TrustProxyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Allow any host — we trust Render's proxy
+        request.scope["headers"] = [
+            (k, v) for k, v in request.scope["headers"]
+            if k.lower() != b"host"
+        ] + [(b"host", b"localhost")]
+        return await call_next(request)
+
+# Get the underlying Starlette app and add middleware
+app = mcp.streamable_http_app()
+app.add_middleware(TrustProxyMiddleware)
 
 SPOTIFY_API   = "https://api.spotify.com/v1"
 SPOTIFY_TOKEN = "https://accounts.spotify.com/api/token"
